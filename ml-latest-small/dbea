@@ -1,0 +1,385 @@
+
+(SELECT identifier, transaction_type, destination, transaction_status, last_payment_datetime
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_rfm 
+WHERE transaction_status = 'Successful' 
+AND transaction_type='BillPayment');
+
+ 
+select aa.identifier, user_name as email from (
+(select identifier from(
+SELECT cast(identifier as bigint) identifier, transaction_status, ROW_NUMBER() over(PARTITION by identifier order by last_payment_datetime desc) rown 
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_rfm
+where trans_date = '2022-04' and transaction_type = 'Transfer' and identifier_flag = 'known' 
+and terminal in (select terminal_name from quickteller_retail_user_terminals))jj
+where jj.rown=1 and jj.transaction_status = 'Failed'
+and identifier not in ( 
+select distinct identifier from BigData_Aggregates.dbo.quickteller_users_monthly_rfm 
+where trans_date >= '2022-05' and transaction_type = 'Transfer' and transaction_status = 'Successful'
+and identifier_flag = 'known' 
+and terminal in (select terminal_name from quickteller_retail_user_terminals))) aa
+left join BigData_Aggregates.dbo.quickteller_users_details_data bb on aa.identifier = bb.customer_id);
+
+select * from BigData_Aggregates.dbo.quickteller_users_monthly_rfm where transaction_type = 'Transfer';
+select * from quickteller_users_details_data;
+
+SELECT DISTINCT biller_name
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_rfm 
+where format(last_payment_datetime, 'yyyy-MM')>= '2022-05' 
+group by biller_name 
+having max(transaction_status)='successful';
+
+SELECT biller_id, biller_name, biller_category_name, amount_paid, surcharge, amount_paid+surcharge as total_paid 
+from BigData_Aggregates.dbo.quickteller_users_monthly_rfm;
+
+
+SELECT trans_date, customer, customer_id, loan_type, channel, provider, loan_status, loans_count, total_amount
+FROM BigData_Aggregates.dbo.quickteller_loans_users_monthly_rfm 
+where customer = 7010071714 AND trans_date BETWEEN '2023-02' AND '2023-08'
+ORDER BY trans_date DESC;
+
+
+---Quickteller task 
+
+SELECT * FROM (
+SELECT s.*, ROW_NUMBER() over( PARTITION by customer, customer_id order by dates desc) rown
+FROM 
+(SELECT  customer, customer_id, channel, loan_status,MAX(trans_date) as Dates
+FROM BigData_Aggregates.dbo.quickteller_loans_users_monthly_rfm 
+WHERE loan_status = 'closed'  
+GROUP BY customer, customer_id,loan_status, channel
+HAVING MAX(trans_date) BETWEEN '2023-02' AND '2023-08'
+UNION ALL
+SELECT  customer, customer_id, channel, loan_status,MAX(trans_date) as Dates
+FROM BigData_Aggregates.dbo.quickteller_loans_users_monthly_rfm 
+WHERE loan_status = 'open'
+GROUP BY customer, customer_id,loan_status, channel
+HAVING MAX(trans_date) BETWEEN '2023-02' AND '2023-08') s
+) dd WHERE rown=1 AND loan_status='closed' ORDER BY customer;
+
+SELECT  customer, customer_id, channel, loan_status,MAX(trans_date) as Dates
+FROM BigData_Aggregates.dbo.quickteller_loans_users_monthly_rfm 
+WHERE loan_status = 'open'  
+GROUP BY customer, customer_id,loan_status, channel
+HAVING MAX(trans_date) BETWEEN '2023-02' AND '2023-08'
+
+--SELECT DISTINCT customer, customer_id, channel, loan_status,MAX(trans_date) as Dates
+--FROM BigData_Aggregates.dbo.quickteller_loans_users_monthly_rfm
+--WHERE loan_status='closed'
+--GROUP BY customer, customer_id, channel,loan_status
+--HAVING MAX(trans_date) BETWEEN '2023-02' AND '2023-08'
+--ORDER BY customer;
+
+--Raph's method of Quickteller task
+SELECT bb.user_name email, bb.firstname name, bb.verified_mobile_phone mobile 
+from
+(
+select customer, customer_id, loan_status, max(trans_date) last_closed_loan_month 
+from quickteller_loans_users_monthly_rfm
+where trans_date >= '2023-02' 
+and customer not in (select customer from quickteller_loans_users_monthly_rfm where trans_date >= '2023-02' and loan_status = 'open')
+and customer in (select customer from quickteller_loans_users_monthly_rfm where trans_date >= '2023-02' and loan_status = 'closed')
+and customer_id is not null
+group by customer, customer_id,loan_status) ab
+left join quickteller_users_details_data bb
+on ab.customer_id = bb.customer_id 
+
+--New request from Uju
+SELECT *
+FROM BigData_Aggregates.dbo.collection_transactions_summary 
+where terminal in ('Palmpay 2', 'PALMPAY LTD') and product_name like '%sport%';
+
+--select trans_month, terminal, sum(total_count_), sum(total_amount) from (
+SELECT format(payment_date,'yyyy-MM') trans_month, terminal, product_name,destination,
+sum(total_count) total_count, sum(total_amount/100) total_amount, authorisation_status
+from (SELECT payment_date, terminal, total_count, total_amount, product_name, authorisation_status,destination
+FROM BigData_Aggregates.dbo.collection_transactions_summary 
+where payment_date >= '2021-01-01' 
+and terminal in ('Palmpay 2', 'PALMPAY LTD') 
+and platform in ('PayDirect Enterprise,Quickteller', 'Quickteller')
+and product_name in ('MOBILE SPORT LIMITED')
+) a 
+group by format(payment_date,'yyyy-MM'), terminal, product_name, authorisation_status,destination
+order by trans_month, terminal, product_name;
+--)b group by trans_month, terminal;
+
+
+SELECT biller_id, biller_code, biller_name, product_name 
+FROM BigData_Aggregates.dbo.quickteller_billers_category 
+where biller_name like '%mSport%';
+
+--New request for Mosh from Mariam
+
+SELECT top 200 trans_date, entity_type, entity_value, users_category, frequency, users_count, users_count_attempts, users_count_known, users_count_attempts_known, users_count_unknown, users_count_attempts_unknown, trans_volume, trans_volume_attempts, trans_volume_known, trans_volume_attempts_known, trans_volume_unknown, trans_volume_attempts_unknown, trans_value, trans_value_attempts, trans_value_known, trans_value_attempts_known, trans_value_unknown, trans_value_attempts_unknown
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_activity_metrics;
+
+
+
+
+select trans_date, users_count_attempts_known Unique_Customers_All, 
+users_count_known Unique_Customers_Successful,
+trans_volume_attempts_known All_Transactions,
+trans_volume_known Successful_Transactions, trans_volume_attempts_known - trans_volume_known 
+as Failed_Transactions
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_activity_metrics 
+where trans_date >='2022-04' and entity_type='Transaction_type' and entity_value='Recharge'
+and frequency = 'Monthly' and  users_category = 'QT-App'
+
+
+SELECT distinct frequency 
+from BigData_Aggregates.dbo.quickteller_users_monthly_activity_metrics 
+where entity_value like '%';
+
+
+select trans_date, users_count_attempts_known Unique_Customers_All, 
+users_count_known Unique_Customers_Successful,
+trans_volume_attempts_known All_Transactions,
+trans_volume_known Successful_Transactions, trans_volume_attempts_known - trans_volume_known as Failed_Transactions
+FROM BigData_Aggregates.dbo.quickteller_users_mtd_activity_metrics
+where trans_date ='2023-08' and entity_type='Transaction_type' and entity_value='Recharge'
+and frequency = 'Monthly' and  users_category = 'QT-App'
+
+
+
+
+SELECT trans_date, entity_type, entity_value, users_category, users_count, users_count_attempts, users_count_known, users_count_attempts_known, users_count_unknown, users_count_attempts_unknown, trans_volume, trans_volume_attempts, trans_volume_known, trans_volume_attempts_known, trans_volume_unknown, trans_volume_attempts_unknown, trans_value, trans_value_attempts, trans_value_known, trans_value_attempts_known, trans_value_unknown, trans_value_attempts_unknown, loading_time, frequency
+FROM BigData_Aggregates.dbo.quickteller_users_mtd_activity_metrics;
+
+
+
+
+
+
+
+
+
+
+
+--very important queries for future purposes
+
+SELECT payment_date, database_name, datalake_path, database_count, datalake_count, table_name
+FROM BigData_Aggregates.dbo.indeco_data_quality_logs 
+where payment_date >= '2023-08-25'
+order by payment_date desc;
+
+SELECT data_pipeline, log_type, log_message, logging_time
+FROM BigData_Aggregates.dbo.indeco_data_pipeline_logs 
+where format(logging_time,'yyyy-MM-dd')>='2023-08-28'
+order by logging_time desc;
+
+
+--New request from Chidera
+SELECT aa.trans_date, aa.identifier, aa.trans_count, x.beneficiary_name,
+ROW_NUMBER() over( PARTITION by identifier order by trans_date desc) row_no
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_rfm aa 
+left join BigData_Aggregates.dbo.tmp_funds_transfer_202308 x
+on cast(aa.identifier as bigint) = x.customer_no
+where transaction_status = 'Successful' and transaction_type= 'Transfer' and trans_date >='2023-03'
+and identifier is not null and identifier_flag = 'known' 
+and terminal in (select terminal_name from BigData_Aggregates.dbo.quickteller_retail_user_terminals)
+--group by identifier, destination,transaction_status, trans_count, transaction_type,trans_date, amount_paid 
+
+
+
+--working one...
+SELECT customer_email, SUBSTRING(x.customer_name, 1, CHARINDEX(',', x.customer_name + ',') - 1) AS customer_name,
+SUBSTRING(beneficiary_name, 1, CHARINDEX(',', beneficiary_name + ',') - 1) AS beneficiary_name, beneficiary_number,
+count(beneficiary_name) 
+FROM BigData_Aggregates.dbo.tmp_funds_transfer_202308 x 
+left join BigData_Aggregates.dbo.quickteller_users_details_data bb 
+on customer_name  = bb.firstname+':'+bb.lastname
+where status= 'Successful' 
+group by customer_email, x.customer_name, beneficiary_name,beneficiary_number
+having count(beneficiary_name)>=6
+
+SELECT x.* FROM BigData_Aggregates.dbo.tmp_funds_transfer_new x
+
+SELECT DISTINCT bb.firstname name, x.customer_email email 
+FROM BigData_Aggregates.dbo.tmp_funds_transfer_new x
+left join BigData_Aggregates.dbo.quickteller_users_details_data bb
+on x.customer_email=bb.user_name 
+left join BigData_Aggregates.dbo.quickteller_users_monthly_rfm ee
+on ee.identifier = cast(bb.customer_id as varchar)
+--where ee.trans_date >= '2023-08' 
+where ee.terminal not in (select terminal_name from BigData_Aggregates.dbo.quickteller_retail_user_terminals 
+where terminal_id='1530')
+order by name
+
+SELECT Distinct bb.firstname name, x.customer_email email 
+FROM BigData_Aggregates.dbo.tmp_funds_transfer_new x
+left join BigData_Aggregates.dbo.quickteller_users_details_data bb
+on x.customer_email=bb.user_name 
+left join BigData_Aggregates.dbo.quickteller_users_monthly_rfm ee
+on ee.identifier = cast(bb.customer_id as varchar)
+where ee.trans_date >= '2023-03' 
+order by name
+
+--New recent request from Odera...
+SELECT count(distinct identifier) total, destination, transaction_status 
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_rfm aa 
+where trans_date >='2023-07' 
+and destination like '%top%'
+and transaction_status = 'Successful'
+and identifier is not null and identifier_flag = 'known' 
+--and terminal in (select terminal_name from BigData_Aggregates.dbo.quickteller_retail_user_terminals 
+--where terminal_id='1530')
+GROUP by destination, transaction_status 
+order by total desc
+
+SELECT identifier, destination, count(transaction_status) total 
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_rfm aa 
+where trans_date >='2023-03' 
+and destination like '%show%'
+and transaction_status = 'Successful'
+and identifier is not null and identifier_flag = 'known' 
+--and terminal in (select terminal_name from BigData_Aggregates.dbo.quickteller_retail_user_terminals 
+--where terminal_id='1530')
+GROUP by identifier, destination 
+order by total desc
+
+select DISTINCT terminal_id, terminal_name from BigData_Aggregates.dbo.quickteller_retail_user_terminals
+
+
+SELECT count(DISTINCT identifier) total
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_rfm aa
+where trans_date >='2023-09'
+
+
+SELECT entity_type,entity_value, users_category, users_count, users_count_attempts, users_count_known,
+users_count_attempts_known, users_count_unknown, users_count_attempts_unknown, trans_volume, 
+trans_volume_attempts, trans_volume_known, trans_volume_attempts_known, trans_volume_unknown, 
+trans_volume_attempts_unknown, trans_value, trans_value_attempts, trans_value_known, trans_value_attempts_known,
+trans_value_unknown, trans_value_attempts_unknown
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_activity_metrics
+where trans_date ='2023-10' and entity_type='All' and frequency='monthly' and entity_value='All';
+
+
+
+SELECT top 4 * FROM BigData_Aggregates.dbo.quickteller_users_details_data qudd  
+
+
+--request from Mosh
+SELECT DISTINCT bb.customer_id, bb.firstname name, bb.user_name email, bb.verified_mobile_phone phone
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_rfm aa 
+left join BigData_Aggregates.dbo.quickteller_users_details_data bb
+on cast(aa.identifier as bigint) = bb.customer_id 
+where biller_category_name!= 'Cable TV' and identifier_flag ='known'
+and terminal in (select terminal_name from BigData_Aggregates.dbo.quickteller_retail_user_terminals)
+and trans_date >='2023-03' order by name
+
+SELECT DISTINCT bb.customer_id, bb.firstname name, bb.user_name email, bb.verified_mobile_phone phone
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_rfm aa
+left join BigData_Aggregates.dbo.quickteller_users_details_data bb
+on cast(aa.identifier as bigint) = bb.customer_id
+where  identifier_flag ='known'
+and terminal in (select terminal_name from BigData_Aggregates.dbo.quickteller_retail_user_terminals)
+and trans_date >='2023-03' 
+and aa.identifier not in
+(Select DISTINCT identifier from
+BigData_Aggregates.dbo.quickteller_users_monthly_rfm
+WHERE terminal in (select terminal_name from BigData_Aggregates.dbo.quickteller_retail_user_terminals)
+and trans_date >='2023-03'
+and identifier_flag ='known'
+and biller_category_name ='Cable TV')
+
+--Raph's go-to queries for daily logs and checks count...
+select count(distinct payment_date) cnt, max(payment_date) 
+from BigData_Aggregates.dbo.collection_transactions_summary 
+where payment_date >= '2023-10-01' and payment_date < '2023-11-01';
+
+select count(distinct payment_date) cnt, max(payment_date) 
+from BigData_Aggregates.dbo.vw_ie_consolidated_collection_transactions_summary 
+where payment_date >= '2023-10-01' and payment_date < '2023-11-01';
+
+select count(distinct payment_date) cnt, max(payment_date), sum(total_count) trans_cnt 
+from BigData_Aggregates.dbo.autopay_transactions_summary_new 
+where payment_date >= '2023-10-01' and payment_date < '2023-11-01';
+
+select count(distinct payment_date) cnt, max(payment_date) 
+from BigData_Aggregates.dbo.quickteller_transfers_banded 
+where payment_date >= '2023-10-01' and payment_date < '2023-11-01';
+
+select count(distinct payment_date) cnt, max(payment_date) 
+from BigData_Aggregates.dbo.quickteller_ussd_summary 
+where payment_date >= '2023-10-01' and payment_date < '2023-11-01';
+
+select count(distinct payment_date) cnt, max(payment_date) 
+from BigData_Aggregates.dbo.indeco_data_quality_logs 
+where payment_date >= '2023-10-01' and payment_date < '2023-11-01';
+
+select *
+from BigData_Aggregates.dbo.indeco_data_quality_logs 
+where payment_date >= '2023-10-01' and database_count != datalake_count;
+
+
+SELECT process_date, data_pipeline, data_flow, platform, control_count, 
+actual_count, source_count, loading_time
+FROM BigData_Aggregates.dbo.indeco_data_flows_audit_log;
+
+
+
+
+--Raph's new line
+
+
+select top 1000 * from BigData_Aggregates.dbo.indeco_data_pipeline_logs
+where data_pipeline in (''
+,'CustomerTransactionsAnalytics'
+,'QuicktellerBillersAndUsers'
+
+,'DataQualityAuditor'
+
+,'MongoDatabaseLoader'
+
+,'Quickteller Loans'
+
+,'Quickteller Transport'
+
+,'Quickteller Homes'
+
+,'Collections'
+
+,'Quickteller Demographics'
+)
+order by logging_time desc;
+
+--Special table from Moshood 
+
+select webhook_data['homesquicktellercee'] from BigData_Aggregates.dbo.quickteller_homes_search_webhook;
+
+
+SELECT customer_id, Label, customer_email, run_date
+FROM BigData_Aggregates.dbo.fund_transfer_recommendations_marketing
+order by run_date desc
+
+
+SELECT top 5 trans_date, customer, customer_id, loan_type, channel, provider, loan_status, loans_count, total_amount
+FROM BigData_Aggregates.dbo.quickteller_loans_users_monthly_rfm order by loans_count desc;
+
+
+
+
+
+SELECT top 1000 payment_date, channel_name, transaction_type,
+product_id, product_name, payment_item, payment_item_category, 
+terminal, card_bin, payment_method, bank_name, bank_branch, lead_bank_name, 
+iso_bank_name, state_name, currency_code, destination, response_code, authorisation_status, 
+platform, total_count, total_amount, total_isw_fee, total_bank_coll_fee, total_lead_bank_fee, total_iso_fee
+FROM BigData_Aggregates.dbo.collection_transactions_summary order by payment_date desc;
+
+--Request from Etim
+
+Select s.* from (SELECT ee.verified_mobile_phone, destination,terminal, transaction_status, ROW_NUMBER() over( PARTITION by identifier order by identifier desc) no_of_trans
+FROM BigData_Aggregates.dbo.quickteller_users_monthly_rfm aa 
+left join BigData_Aggregates.dbo.quickteller_users_details_data ee
+on aa.identifier = cast(ee.customer_id as varchar)
+where trans_date >='2023-04' 
+and destination like '%top%' 
+and destination not like '%dstv%' 
+and transaction_status = 'Successful'
+and identifier is not null and identifier_flag = 'known' 
+and terminal in (select terminal_name from BigData_Aggregates.dbo.quickteller_retail_user_terminals)
+) s 
+where no_of_trans =1
+
+select DISTINCT terminal_name from BigData_Aggregates.dbo.quickteller_retail_user_terminals
+
